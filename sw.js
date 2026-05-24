@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trd-journey-v2';
+const CACHE_NAME = 'trd-journey-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -23,6 +23,12 @@ self.addEventListener('activate', (e) => {
     })
   );
   self.clients.claim();
+});
+
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.action === 'skipWaiting') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (e) => {

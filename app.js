@@ -280,7 +280,17 @@ function normalizeState(raw) {
     sops: raw.sops || [],
     accounts: raw.accounts || [],
     activeSopId: raw.activeSopId || "",
-    activeAccountId: raw.activeAccountId || ""
+    activeAccountId: raw.activeAccountId || "",
+    backtests: (raw.backtests || []).map(bt => ({
+      id: String(bt.id || uid()),
+      sopId: String(bt.sopId || ""),
+      sopName: String(bt.sopName || ""),
+      capital: Number(bt.capital || 10000),
+      riskMode: bt.riskMode || "fixed-usd",
+      riskVal: Number(bt.riskVal || 100),
+      trades: Array.isArray(bt.trades) ? bt.trades.map(Number) : [],
+      date: bt.date || todayISO()
+    }))
   });
 }
 
@@ -1257,19 +1267,63 @@ function renderPlaybook() {
   document.getElementById("playbookGrid").innerHTML = state.sops.map((sop) => {
     const progress = sopProgress(sop.id);
     const level = sopLevel(progress);
-    return `<article class="play-card sop-library-card ${sop.archivedAt ? "archived" : ""}">
-      <span class="tag info">Level ${level.level} ${level.name}</span>
-      <strong>${safe(sop.name)}</strong>
-      <p>${safe(sop.market)} · ${safe(sop.timeframe)} · ${progress.records} records</p>
-      <ul>
-        ${(sop.checklist || []).slice(0, 3).map((item) => `<li>${safe(item)}</li>`).join("")}
-      </ul>
-      <div class="row-actions">
-        <button class="text-button" data-edit-sop="${safe(sop.id)}">Edit</button>
-        <button class="text-button" data-add-account="${safe(sop.id)}">Add Account</button>
-        <button class="text-button danger" data-delete-sop="${safe(sop.id)}">Delete</button>
+    
+    const trades = sopTrades(sop.id);
+    const closed = closedTrades(trades);
+    const sparklineHtml = drawMiniSparklineMarkup(closed);
+    
+    return `
+    <div class="sop-card-container" id="container-${sop.id}">
+      <div class="sop-card-inner">
+        <!-- Front Face -->
+        <div class="sop-card-front">
+          <button class="card-flip-btn" onclick="flipCard('${sop.id}')" title="Flip to rules" aria-label="Flip card">🔄</button>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <span class="tag info" style="width:fit-content; margin-bottom:4px;">Level ${level.level} ${level.name}</span>
+            <strong style="font-size:18px; line-height:1.2;">${safe(sop.name)}</strong>
+            <span style="font-size:12px; color:var(--muted);">${safe(sop.market)} · ${safe(sop.timeframe)} · ${progress.records} records</span>
+          </div>
+          
+          <div class="mini-sparkline-container">
+            ${sparklineHtml}
+          </div>
+          
+          <div class="sop-card-stat-row">
+            <div class="sop-card-stat">
+              <span>Win Rate</span>
+              <strong>${Math.round(progress.winRate * 100)}%</strong>
+            </div>
+            <div class="sop-card-stat">
+              <span>Expectancy</span>
+              <strong class="${progress.expectancy >= 0 ? 'pos' : 'neg'}">${formatR(progress.expectancy)}</strong>
+            </div>
+            <div class="sop-card-stat">
+              <span>Total R</span>
+              <strong class="${progress.totalR >= 0 ? 'pos' : 'neg'}">${formatR(progress.totalR)}</strong>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Back Face -->
+        <div class="sop-card-back">
+          <button class="card-flip-btn" onclick="flipCard('${sop.id}')" title="Flip to stats" aria-label="Flip card">🔄</button>
+          <div style="display:flex; flex-direction:column; gap:8px; overflow-y:auto; flex-grow:1; margin-bottom:12px; padding-right:4px;">
+            <strong style="font-size:14px; color:var(--muted);">Checklist & Rules</strong>
+            <ul style="margin: 0; padding-left: 18px; font-size:12px; line-height:1.4;">
+              ${(sop.checklist || []).slice(0, 4).map((item) => `<li>${safe(item)}</li>`).join("")}
+              ${(sop.checklist || []).length > 4 ? `<li>+${(sop.checklist || []).length - 4} more</li>` : ""}
+            </ul>
+            ${sop.entryRules ? `<div style="font-size:11px; opacity:0.85; border-top:1px solid var(--hairline); padding-top:6px;"><strong>Entry:</strong> ${safe(sop.entryRules)}</div>` : ''}
+            ${sop.weaknesses && sop.weaknesses.length ? `<div style="font-size:11px; opacity:0.85; border-top:1px solid var(--hairline); padding-top:6px; color:var(--red);"><strong>Weakness:</strong> ${safe(sop.weaknesses[0])}</div>` : ''}
+          </div>
+          <div class="row-actions" style="margin-top:auto; border-top:1px solid var(--hairline); padding-top:10px;">
+            <button class="text-button" data-edit-sop="${safe(sop.id)}">Edit</button>
+            <button class="text-button" data-add-account="${safe(sop.id)}">Add Account</button>
+            <button class="text-button danger" data-delete-sop="${safe(sop.id)}">Delete</button>
+          </div>
+        </div>
       </div>
-    </article>`;
+    </div>`;
   }).join("");
 }
 
@@ -1290,7 +1344,7 @@ function deleteSop(id) {
   }
   saveState();
   renderAll();
-  toast(`SOP "${sop.name}" deleted.`);
+  toast(`SOP "${sop.name}" deleted.`, "delete");
 }
 
 function openSopModal(id = "") {
@@ -1451,7 +1505,35 @@ function translatePageText() {
     ["Day detail", "当天详情"], ["Select a day", "选择日期"], ["Weekly", "每周"], ["Cycle summary", "周期摘要"], ["Monthly", "每月"], ["Consistency", "一致性"],
     ["Personal system", "个人系统"], ["Default Symbol", "默认品种"], ["Risk Per Trade ($)", "每笔风险 ($)"], ["Daily Max Loss (R)", "每日最大亏损 (R)"],
     ["Max Trades Per Day", "每日最大交易数"], ["Daily Rules", "每日规则"], ["Save Preferences", "保存偏好"], ["Data", "数据"], ["Backup and restore", "备份与恢复"],
-    ["Import", "导入"], ["Backup", "备份"], ["Reset Demo", "重置演示"], ["Start Trade", "开始记录"], ["Update", "更新"], ["Edit", "编辑"], ["Delete", "删除"], ["View", "查看"]
+    ["Import", "导入"], ["Backup", "备份"], ["Reset Demo", "重置演示"], ["Start Trade", "开始记录"], ["Update", "更新"], ["Edit", "编辑"], ["Delete", "删除"], ["View", "查看"],
+    
+    // Phase 5 Translations
+    ["Backtester", "回测沙盒"],
+    ["SOP Backtest Sandbox", "SOP 策略回测沙盒"],
+    ["Initial Capital ($)", "初始资金 ($)"],
+    ["Risk Mode", "风险模式"],
+    ["Risk Value", "风险数值"],
+    ["Batch Paste R-Multiples", "批量粘贴 R 倍数"],
+    ["Generate Curve", "生成曲线"],
+    ["Manual Input", "单笔录入"],
+    ["Batch Input", "批量录入"],
+    ["R Multiple", "R 倍数"],
+    ["Setup Name (Optional)", "形态名称 (可选)"],
+    ["Add Trade", "添加模拟"],
+    ["Save Run", "保存回测"],
+    ["Clear Sandbox", "清空沙盒"],
+    ["Mock Trades", "模拟交易列表"],
+    ["Backtest Analytics", "回测数据指标"],
+    ["Execution Gap", "实盘执行偏差"],
+    ["Backtest vs Live Execution", "回测 vs 实盘对比"],
+    ["Saved Backtests", "已保存回测历史"],
+    ["Import Backup", "导入备份数据"],
+    ["Data Manager", "数据管理器"],
+    ["Smart Merge (Recommended)", "智能合并数据 (推荐)"],
+    ["Full Overwrite Restore", "完全覆盖恢复"],
+    ["Projected R-Curve Projection (Dashed: Current / Solid: Merged)", "R 曲线投影对照 (虚线: 当前 / 实线: 合并后)"],
+    ["System update ready, click to reload.", "系统更新已就绪，点击立即载入新版本。"],
+    ["Update", "更新"]
   ];
   const map = new Map(language === "zh" ? pairs : pairs.map(([en, zh]) => [zh, en]));
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -1487,13 +1569,13 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playSound(type) {
   if (audioCtx.state === 'suspended') audioCtx.resume();
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  
   const now = audioCtx.currentTime;
+  
   if (type === 'success') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
     osc.type = 'sine';
     osc.frequency.setValueAtTime(600, now);
     osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
@@ -1503,6 +1585,10 @@ function playSound(type) {
     osc.start(now);
     osc.stop(now + 0.2);
   } else if (type === 'error') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(200, now);
     osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
@@ -1512,6 +1598,10 @@ function playSound(type) {
     osc.start(now);
     osc.stop(now + 0.2);
   } else if (type === 'switch') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
     osc.type = 'sine';
     osc.frequency.setValueAtTime(800, now);
     gain.gain.setValueAtTime(0, now);
@@ -1519,6 +1609,96 @@ function playSound(type) {
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
     osc.start(now);
     osc.stop(now + 0.05);
+  } else if (type === 'click') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1000, now);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.08, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.03);
+    osc.start(now);
+    osc.stop(now + 0.03);
+  } else if (type === 'win') {
+    const freqs = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    freqs.forEach((f, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now + i * 0.04);
+      gain.gain.setValueAtTime(0, now + i * 0.04);
+      gain.gain.linearRampToValueAtTime(0.15, now + i * 0.04 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.04 + 0.3);
+      osc.start(now + i * 0.04);
+      osc.stop(now + i * 0.04 + 0.3);
+    });
+  } else if (type === 'loss') {
+    const freqs = [392.00, 311.13, 261.63]; // G4, Eb4, C4
+    freqs.forEach((f, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, now + i * 0.06);
+      gain.gain.setValueAtTime(0, now + i * 0.06);
+      gain.gain.linearRampToValueAtTime(0.12, now + i * 0.06 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.4);
+      osc.start(now + i * 0.06);
+      osc.stop(now + i * 0.06 + 0.4);
+    });
+  } else if (type === 'flip') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(350, now);
+    osc.frequency.exponentialRampToValueAtTime(150, now + 0.08);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  } else if (type === 'delete') {
+    try {
+      const bufferSize = audioCtx.sampleRate * 0.15;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1000, now);
+      filter.frequency.exponentialRampToValueAtTime(100, now + 0.15);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      noise.start(now);
+      noise.stop(now + 0.15);
+    } catch (e) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.linearRampToValueAtTime(60, now + 0.15);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    }
   }
 }
 
@@ -1656,7 +1836,14 @@ async function saveTradeFromForm(event) {
     resetTradeForm();
     renderAll();
     const progress = sopProgress(trade.sopId);
-    toast(nextStatus === "open" ? `Added to ${sopName(trade.sopId)} journey.` : `Record completed. ${progress.records} records in this SOP.`);
+    
+    let toastType = "info";
+    if (nextStatus === "closed") {
+      const isWin = trade.pnl > 0 || (trade.pnl === 0 && rValue(trade) > 0);
+      toastType = isWin ? "win" : "loss";
+    }
+    
+    toast(nextStatus === "open" ? `Added to ${sopName(trade.sopId)} journey.` : `Record completed. ${progress.records} records in this SOP.`, toastType);
   } catch (error) {
     toast(error.message, "error");
   }
@@ -1669,7 +1856,7 @@ function deleteTrade(id) {
   state.trades = state.trades.filter((item) => item.id !== id);
   saveState();
   renderAll();
-  toast("Trade deleted.");
+  toast("Trade deleted.", "delete");
 }
 
 function openCloseTradeModal(id) {
@@ -1729,11 +1916,15 @@ async function closeTradeFromModal(event) {
     trade.emotion = form.emotion.value;
     trade.exitNote = form.exitNote.value.trim();
     if (imagesData.length) trade.images = imagesData;
+    
+    const isWin = trade.pnl > 0 || (trade.pnl === 0 && rValue(trade) > 0);
+    const toastType = isWin ? "win" : "loss";
+    
     saveState();
     closeModal();
     renderAll();
     const progress = sopProgress(trade.sopId);
-    toast(`${sopName(trade.sopId)} now has ${progress.records} records.`);
+    toast(`${sopName(trade.sopId)} now has ${progress.records} records.`, toastType);
   } catch (error) {
     toast(error.message, "error");
   }
@@ -1807,9 +1998,13 @@ function closeModal() {
 }
 
 function toast(message, type = "info") {
-  playSound(type === "error" ? "error" : "success");
+  if (type === "win") playSound("win");
+  else if (type === "loss") playSound("loss");
+  else if (type === "delete") playSound("delete");
+  else playSound(type === "error" ? "error" : "success");
+  
   const el = document.createElement("div");
-  el.className = `toast ${type}`;
+  el.className = `toast ${type === "win" ? "success" : type === "loss" ? "error" : type === "delete" ? "info" : type}`;
   el.textContent = message;
   document.getElementById("toastStack").appendChild(el);
   setTimeout(() => {
@@ -1861,12 +2056,7 @@ async function importJson(file) {
     const imported = JSON.parse(text);
     const incoming = normalizeState(imported);
     if (!Array.isArray(incoming.trades)) throw new Error("Invalid backup file.");
-    if (!confirm("Import will replace current local data. Continue?")) return;
-    state = incoming;
-    saveState();
-    resetTradeForm();
-    renderAll();
-    toast("Backup imported.");
+    showImportPreview(incoming);
   } catch (error) {
     toast("Invalid JSON backup. Current data was not changed.", "error");
   }
@@ -1897,7 +2087,16 @@ function openModule(id, source = null) {
   shell.dataset.activeModule = id;
   shell.classList.remove("is-closing-module");
   shell.classList.add("is-opening-module", "is-in-module");
+  
   document.querySelectorAll(".view").forEach((item) => item.classList.toggle("active", item.id === id));
+  
+  // Trigger shimmer skeleton loaders on opening
+  const mainEl = document.querySelector(".main");
+  if (mainEl) {
+    mainEl.classList.add("is-skeleton");
+    setTimeout(() => mainEl.classList.remove("is-skeleton"), 240);
+  }
+  
   setText("moduleTitle", view.dataset.title || "Module");
   setText("moduleKicker", view.dataset.kicker || "TRD Journey");
   document.querySelector(".module-action").classList.toggle("hidden", id === "journal");
@@ -2079,8 +2278,26 @@ document.body.addEventListener("submit", (event) => {
 
 document.querySelectorAll("[data-review-panel]").forEach((button) => {
   button.addEventListener("click", () => {
+    playSound("click");
     document.querySelectorAll("[data-review-panel]").forEach((item) => item.classList.toggle("active", item === button));
-    document.querySelectorAll(".review-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `review-${button.dataset.reviewPanel}`));
+    const targetPanelId = `review-${button.dataset.reviewPanel}`;
+    const targetPanel = document.getElementById(targetPanelId);
+    
+    document.querySelectorAll(".review-panel").forEach((panel) => {
+      panel.classList.remove("active");
+    });
+    
+    if (targetPanel) {
+      targetPanel.classList.add("active");
+      targetPanel.classList.add("is-skeleton");
+      setTimeout(() => targetPanel.classList.remove("is-skeleton"), 200);
+    }
+    
+    if (button.dataset.reviewPanel === "backtester") {
+      populateBacktestSops();
+      renderSavedBacktests();
+      updateBacktesterUI();
+    }
   });
 });
 
@@ -2240,14 +2457,725 @@ document.getElementById("closeInsightDetail")?.addEventListener("click", () => {
   document.getElementById("insightDetailPanel").style.display = "none";
 });
 
+// --- Phase 5: Additional UI & Backtesting Sandbox Helper Functions ---
+
+let sandboxTrades = [];
+
+function initCardSpotlightHover() {
+  document.addEventListener("mousemove", (e) => {
+    const card = e.target.closest(".home-card, .play-card, .sop-card-container");
+    
+    // Reset all other cards
+    const activeCards = document.querySelectorAll(".home-card, .play-card, .sop-card-container");
+    activeCards.forEach(c => {
+      if (c !== card) {
+        c.style.transform = "";
+        c.style.transition = "transform var(--motion-base) var(--spring)";
+        c.style.setProperty("--mouse-x", "-999px");
+        c.style.setProperty("--mouse-y", "-999px");
+      }
+    });
+    
+    if (!card) return;
+    
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    card.style.setProperty("--mouse-x", `${x}px`);
+    card.style.setProperty("--mouse-y", `${y}px`);
+    
+    // Tilt calculations
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const rotateX = (centerY - y) / 12;
+    const rotateY = (x - centerX) / 12;
+    
+    card.style.transition = "transform 0.08s ease-out";
+    card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.015, 1.015, 1.015)`;
+  });
+  
+  document.addEventListener("mouseleave", (e) => {
+    const card = e.target.closest(".home-card, .play-card, .sop-card-container");
+    if (card) {
+      card.style.transition = "transform var(--motion-base) var(--spring)";
+      card.style.transform = "";
+      card.style.setProperty("--mouse-x", "-999px");
+      card.style.setProperty("--mouse-y", "-999px");
+    }
+  }, true);
+}
+
+function initCalendarHover() {
+  const grid = document.getElementById("calendarGrid");
+  if (!grid) return;
+  
+  grid.addEventListener("mouseover", (e) => {
+    const dayBtn = e.target.closest(".calendar-day");
+    if (!dayBtn || dayBtn.classList.contains("empty")) return;
+    
+    const day = dayBtn.dataset.day;
+    if (!day) return;
+    
+    const dayTrades = byDate(day);
+    const closed = closedTrades(dayTrades);
+    const m = metrics(closed);
+    const review = state.dailyReviews[day];
+    const plan = state.dailyPlans[day];
+    
+    let html = `<div style="font-family:-apple-system, sans-serif; font-size:12px; line-height:1.45; text-align:left;">`;
+    html += `<strong style="font-size:13px; color:var(--ink); display:block; margin-bottom:4px;">${day}</strong>`;
+    
+    if (dayTrades.length === 0) {
+      html += `<span class="muted">No trades recorded.</span>`;
+    } else {
+      html += `<span style="font-weight:600; color:${m.totalR >= 0 ? 'var(--green)' : 'var(--red)'}">Profit: ${formatR(m.totalR)}</span> (${closed.length} closed, ${dayTrades.length - closed.length} open)<br>`;
+      html += `<div style="margin-top:6px; border-top:1px solid var(--hairline); padding-top:4px; max-height:80px; overflow-y:auto; display:grid; gap:2px;">`;
+      dayTrades.forEach(t => {
+        const val = t.status === "open" ? "Open" : (t.pnl ? `$${t.pnl}` : formatR(rValue(t)));
+        html += `<div style="font-size:11px;"><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${t.pnl >= 0 || rValue(t) >= 0 ? 'var(--green)' : 'var(--red)'}; margin-right:4px;"></span>`;
+        html += `<strong>${safe(t.symbol)}</strong> (${safe(t.setup)}) ${t.direction}: <strong>${val}</strong></div>`;
+      });
+      html += `</div>`;
+    }
+    
+    if (plan) {
+      html += `<div style="margin-top:6px; border-top:1px solid var(--hairline); padding-top:4px; opacity:0.85;">`;
+      html += `<strong>Plan:</strong> ${safe(plan.bias)} (${plan.allowedSetups})<br>`;
+      html += `</div>`;
+    }
+    if (review) {
+      html += `<div style="margin-top:4px; opacity:0.85;">`;
+      html += `<strong>Focus:</strong> ${safe(review.focus)}<br>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+    
+    const tooltip = document.getElementById("chartTooltip");
+    if (tooltip) {
+      tooltip.innerHTML = html;
+      const rect = dayBtn.getBoundingClientRect();
+      const tooltipX = window.scrollX + rect.left + rect.width / 2;
+      const tooltipY = window.scrollY + rect.top - 10;
+      
+      tooltip.style.left = tooltipX + "px";
+      tooltip.style.top = tooltipY + "px";
+      tooltip.style.transform = "translate(-50%, -100%)";
+      tooltip.classList.remove("hidden");
+    }
+  });
+  
+  grid.addEventListener("mouseleave", () => {
+    const tooltip = document.getElementById("chartTooltip");
+    if (tooltip) tooltip.classList.add("hidden");
+  }, true);
+  
+  grid.addEventListener("mouseout", (e) => {
+    const dayBtn = e.target.closest(".calendar-day");
+    if (!dayBtn) {
+      const tooltip = document.getElementById("chartTooltip");
+      if (tooltip) tooltip.classList.add("hidden");
+    }
+  });
+}
+
+function updateStorageEstimate() {
+  const el = document.getElementById("storageEstimate");
+  if (!el) return;
+  
+  if (navigator.storage && navigator.storage.estimate) {
+    navigator.storage.estimate().then((estimate) => {
+      const usedMb = (estimate.usage / (1024 * 1024)).toFixed(2);
+      const totalMb = (estimate.quota / (1024 * 1024)).toFixed(0);
+      el.textContent = `${usedMb} MB / ${totalMb} MB (${((estimate.usage / estimate.quota) * 100).toFixed(4)}%)`;
+    }).catch(() => {
+      el.textContent = "Offline storage quota available";
+    });
+  } else {
+    el.textContent = "Supported";
+  }
+}
+
+function updateSyncStatus() {
+  const dot = document.getElementById("syncStatusDot");
+  if (!dot) return;
+  
+  if (navigator.onLine) {
+    dot.className = "status-dot online";
+    dot.title = "Online (Local Storage Sync ready)";
+  } else {
+    dot.className = "status-dot offline";
+    dot.title = "Offline (Local Database Sandbox mode active)";
+  }
+}
+
+function showUpdateBanner(worker) {
+  let banner = document.getElementById("pwaUpdateBanner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "pwaUpdateBanner";
+    banner.className = "update-banner";
+    const text = t("System update ready, click to reload.") || "System update ready, click to reload.";
+    const btnText = t("Update") || "Update";
+    banner.innerHTML = `
+      <span>${text}</span>
+      <button class="primary-button" style="padding:4px 10px; font-size:12px; margin-left:8px; border-radius:999px; background:white; color:var(--blue); font-weight:700; border:none;">${btnText}</button>
+    `;
+    document.body.appendChild(banner);
+    
+    banner.querySelector("button").addEventListener("click", () => {
+      playSound("click");
+      worker.postMessage({ action: "skipWaiting" });
+    });
+  }
+  setTimeout(() => banner.classList.add("show"), 100);
+}
+
+function flipCard(id) {
+  playSound("flip");
+  const container = document.getElementById(`container-${id}`);
+  if (container) {
+    container.classList.toggle("flipped");
+  }
+}
+
+function drawMiniSparklineMarkup(closed) {
+  if (!closed || closed.length === 0) {
+    return `<svg class="mini-sparkline" viewBox="0 0 100 24" aria-hidden="true"><line x1="0" y1="12" x2="100" y2="12" stroke="var(--hairline)" stroke-width="1.5" stroke-dasharray="2,2"></line></svg>`;
+  }
+  let total = 0;
+  const values = [0];
+  for (const t of closed) {
+    total += rValue(t);
+    values.push(total);
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = Math.max(max - min, 0.1);
+  const points = values.map((val, idx) => {
+    const x = (idx / Math.max(values.length - 1, 1)) * 100;
+    const y = 22 - ((val - min) / spread) * 20;
+    return `${x},${y}`;
+  }).join(" ");
+  
+  const strokeColor = total >= 0 ? "var(--green)" : "var(--red)";
+  return `<svg class="mini-sparkline" viewBox="0 0 100 24" style="overflow:visible;" aria-hidden="true">
+    <polyline fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="${points}"></polyline>
+  </svg>`;
+}
+
+function populateBacktestSops() {
+  const select = document.getElementById("backtestSopSelect");
+  if (!select) return;
+  const activeSops = state.sops.filter(s => !s.archivedAt);
+  select.innerHTML = activeSops.map(s => `<option value="${s.id}">${safe(s.name)}</option>`).join("");
+}
+
+function calculateBacktestStats() {
+  const capitalInput = document.getElementById("backtestCapital");
+  const riskModeInput = document.getElementById("backtestRiskMode");
+  const riskValInput = document.getElementById("backtestRiskVal");
+  
+  const initialCapital = Number(capitalInput?.value || 10000);
+  const riskMode = riskModeInput?.value || "fixed-usd";
+  const riskVal = Number(riskValInput?.value || 100);
+  
+  let currentCapital = initialCapital;
+  let grossWins = 0;
+  let grossLosses = 0;
+  let winCount = 0;
+  
+  const tradeRecords = sandboxTrades.map((r, idx) => {
+    let riskAmount = 0;
+    if (riskMode === "fixed-usd") {
+      riskAmount = riskVal;
+    } else {
+      riskAmount = currentCapital * (riskVal / 100);
+    }
+    const pnl = riskAmount * r;
+    currentCapital += pnl;
+    
+    if (r > 0) {
+      winCount++;
+      grossWins += pnl;
+    } else if (r < 0) {
+      grossLosses += Math.abs(pnl);
+    }
+    
+    return {
+      index: idx + 1,
+      r,
+      pnl: Math.round(pnl)
+    };
+  });
+  
+  const profitR = sandboxTrades.reduce((a, b) => a + b, 0);
+  const profitUSD = currentCapital - initialCapital;
+  const winRate = sandboxTrades.length ? winCount / sandboxTrades.length : 0;
+  const expectancy = sandboxTrades.length ? profitR / sandboxTrades.length : 0;
+  
+  let peakR = 0;
+  let currentR = 0;
+  let maxDDR = 0;
+  sandboxTrades.forEach(r => {
+    currentR += r;
+    peakR = Math.max(peakR, currentR);
+    maxDDR = Math.max(maxDDR, peakR - currentR);
+  });
+  
+  const pf = grossLosses > 0 ? grossWins / grossLosses : 0;
+  
+  return {
+    tradeRecords,
+    profitR,
+    profitUSD: Math.round(profitUSD),
+    winRate,
+    expectancy,
+    maxDDR,
+    pf,
+    finalCapital: Math.round(currentCapital)
+  };
+}
+
+function renderBacktestTradesList(tradeRecords) {
+  const tbody = document.getElementById("backtestRows");
+  if (!tbody) return;
+  
+  if (tradeRecords.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="muted" style="text-align:center;">No mock trades in sandbox.</td></tr>`;
+    document.getElementById("backtestCount").textContent = "0";
+    return;
+  }
+  
+  document.getElementById("backtestCount").textContent = String(tradeRecords.length);
+  
+  tbody.innerHTML = tradeRecords.map(t => {
+    const pnlStyle = t.pnl >= 0 ? "color:var(--green); font-weight:600;" : "color:var(--red); font-weight:600;";
+    return `
+      <tr>
+        <td>#${t.index}</td>
+        <td><strong>${t.r >= 0 ? '+' : ''}${t.r}R</strong></td>
+        <td style="${pnlStyle}">${t.pnl >= 0 ? '+' : ''}$${t.pnl.toLocaleString()}</td>
+        <td style="text-align:right;">
+          <button class="text-button danger" onclick="removeMockTrade(${t.index - 1})" style="padding:2px 6px; font-size:11px;">Remove</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function removeMockTrade(idx) {
+  playSound("delete");
+  sandboxTrades.splice(idx, 1);
+  updateBacktesterUI();
+}
+
+function saveBacktestRun() {
+  const sopSelect = document.getElementById("backtestSopSelect");
+  const sopId = sopSelect?.value;
+  if (!sopId) {
+    toast("Please select a valid SOP first.", "error");
+    return;
+  }
+  
+  if (sandboxTrades.length === 0) {
+    toast("Add some mock trades to the sandbox first.", "error");
+    return;
+  }
+  
+  const sop = state.sops.find(s => s.id === sopId);
+  const capital = Number(document.getElementById("backtestCapital").value);
+  const riskMode = document.getElementById("backtestRiskMode").value;
+  const riskVal = Number(document.getElementById("backtestRiskVal").value);
+  
+  const newRun = {
+    id: uid(),
+    sopId,
+    sopName: sop ? sop.name : "Untitled SOP",
+    capital,
+    riskMode,
+    riskVal,
+    trades: [...sandboxTrades],
+    date: todayISO()
+  };
+  
+  if (!state.backtests) state.backtests = [];
+  state.backtests.push(newRun);
+  saveState();
+  playSound("success");
+  toast("Backtest run saved.");
+  renderSavedBacktests();
+}
+
+function renderSavedBacktests() {
+  const listDiv = document.getElementById("savedBacktestList");
+  if (!listDiv) return;
+  
+  const sopId = document.getElementById("backtestSopSelect")?.value;
+  if (!sopId) {
+    listDiv.innerHTML = `<p class="muted">Select an SOP to view saved runs.</p>`;
+    return;
+  }
+  
+  const runs = (state.backtests || []).filter(r => r.sopId === sopId);
+  if (runs.length === 0) {
+    listDiv.innerHTML = `<p class="muted">No saved backtests for this SOP.</p>`;
+    return;
+  }
+  
+  listDiv.innerHTML = runs.map(run => {
+    const profitR = run.trades.reduce((a, b) => a + b, 0);
+    const winRate = Math.round((run.trades.filter(r => r > 0).length / run.trades.length) * 100);
+    return `
+      <div class="status-card" style="display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid var(--hairline); border-radius:12px; background:var(--paper-strong);">
+        <div style="cursor:pointer; flex-grow:1;" onclick="loadBacktestRun('${run.id}')">
+          <strong style="font-size:13px; display:block;">Run: ${run.date}</strong>
+          <span style="font-size:11px; color:var(--muted);">${run.trades.length} trades · WR: ${winRate}% · Profit: <strong>${profitR >= 0 ? '+' : ''}${profitR.toFixed(1)}R</strong></span>
+        </div>
+        <button class="text-button danger" onclick="deleteBacktestRun('${run.id}')" style="padding:4px 8px; font-size:11px; margin-left:10px;">Delete</button>
+      </div>
+    `;
+  }).join("");
+}
+
+function loadBacktestRun(id) {
+  const run = (state.backtests || []).find(r => r.id === id);
+  if (!run) return;
+  
+  playSound("switch");
+  document.getElementById("backtestCapital").value = run.capital;
+  document.getElementById("backtestRiskMode").value = run.riskMode;
+  document.getElementById("backtestRiskVal").value = run.riskVal;
+  
+  sandboxTrades = [...run.trades];
+  updateBacktesterUI();
+  toast("Saved backtest loaded into Sandbox.");
+}
+
+function deleteBacktestRun(id) {
+  if (!confirm("Delete this saved backtest run?")) return;
+  playSound("delete");
+  state.backtests = (state.backtests || []).filter(r => r.id !== id);
+  saveState();
+  toast("Backtest run deleted.");
+  renderSavedBacktests();
+}
+
+function updateBacktesterUI() {
+  const stats = calculateBacktestStats();
+  
+  // Render metrics
+  setText("btMetricProfitR", `${stats.profitR >= 0 ? '+' : ''}${stats.profitR.toFixed(2)}R`);
+  setText("btMetricProfitUSD", `${stats.profitUSD >= 0 ? '+' : ''}$${stats.profitUSD.toLocaleString()}`);
+  setText("btMetricWinRate", `${Math.round(stats.winRate * 100)}%`);
+  setText("btMetricExpectancy", `${stats.expectancy >= 0 ? '+' : ''}${stats.expectancy.toFixed(2)}R`);
+  setText("btMetricMaxDD", `${stats.maxDDR.toFixed(2)}R`);
+  setText("btMetricPF", stats.pf.toFixed(2));
+  
+  // Render trades table
+  renderBacktestTradesList(stats.tradeRecords);
+  
+  // Render Chart
+  let cumulativeR = 0;
+  const series = [{ value: 0, label: "Start" }];
+  sandboxTrades.forEach((r, idx) => {
+    cumulativeR += r;
+    series.push({ value: cumulativeR, label: `Mock #${idx + 1}`, detail: `R: ${r >= 0 ? '+' : ''}${r}R` });
+  });
+  renderLineChart("backtestChart", series, { negative: false });
+  
+  // Execution Gap Comparison
+  const sopId = document.getElementById("backtestSopSelect")?.value;
+  const comparePanel = document.getElementById("btComparePanel");
+  
+  if (sopId && comparePanel) {
+    const liveTrades = state.trades.filter(t => t.sopId === sopId && t.status === "closed");
+    if (liveTrades.length > 0) {
+      const liveM = metrics(liveTrades);
+      const wrGap = Math.round((liveM.winRate - stats.winRate) * 100);
+      const expGap = liveM.expectancy - stats.expectancy;
+      
+      document.getElementById("compWinRate").innerHTML = `Live: <strong>${Math.round(liveM.winRate * 100)}%</strong> / BT: <strong>${Math.round(stats.winRate * 100)}%</strong> (Gap: <strong style="color:${wrGap >= 0 ? 'var(--green)' : 'var(--red)'}">${wrGap >= 0 ? '+' : ''}${wrGap}%</strong>)`;
+      document.getElementById("compExpectancy").innerHTML = `Live: <strong>${formatR(liveM.expectancy)}</strong> / BT: <strong>${formatR(stats.expectancy)}</strong> (Gap: <strong style="color:${expGap >= 0 ? 'var(--green)' : 'var(--red)'}">${formatR(expGap)}</strong>)`;
+      document.getElementById("compPF").innerHTML = `Live: <strong>${liveM.profitFactor.toFixed(2)}</strong> / BT: <strong>${stats.pf.toFixed(2)}</strong>`;
+      
+      comparePanel.style.display = "block";
+    } else {
+      comparePanel.style.display = "none";
+    }
+  }
+}
+
+function runBatchBacktest() {
+  const textarea = document.getElementById("backtestBatchR");
+  if (!textarea) return;
+  const text = textarea.value.trim();
+  if (!text) {
+    toast("Enter some numbers first.", "error");
+    return;
+  }
+  
+  const parsed = text.split(/[\s,;\n\r]+/).map(item => Number(item)).filter(item => !isNaN(item));
+  if (parsed.length === 0) {
+    toast("No valid numbers found.", "error");
+    return;
+  }
+  
+  playSound("success");
+  sandboxTrades = parsed;
+  updateBacktesterUI();
+  toast(`Loaded ${parsed.length} mock trades.`);
+}
+
+function addManualMockTrade() {
+  const rInput = document.getElementById("backtestManualR");
+  const r = Number(rInput?.value || 0);
+  if (isNaN(r) || rInput?.value.trim() === "") {
+    toast("Enter a valid R-multiple.", "error");
+    return;
+  }
+  
+  playSound("switch");
+  sandboxTrades.push(r);
+  rInput.value = "";
+  updateBacktesterUI();
+  toast(`Added trade: ${r}R`);
+}
+
+function clearSandbox() {
+  if (sandboxTrades.length === 0) return;
+  if (!confirm("Clear sandbox trades?")) return;
+  playSound("delete");
+  sandboxTrades = [];
+  document.getElementById("backtestBatchR").value = "";
+  updateBacktesterUI();
+  toast("Sandbox cleared.");
+}
+
+function initBacktesterListeners() {
+  document.getElementById("btnBacktestModeBatch")?.addEventListener("click", (e) => {
+    playSound("click");
+    document.getElementById("btnBacktestModeBatch").classList.add("active");
+    document.getElementById("btnBacktestModeManual").classList.remove("active");
+    document.getElementById("backtestBatchArea").classList.remove("hidden");
+    document.getElementById("backtestManualArea").classList.add("hidden");
+  });
+  
+  document.getElementById("btnBacktestModeManual")?.addEventListener("click", (e) => {
+    playSound("click");
+    document.getElementById("btnBacktestModeManual").classList.add("active");
+    document.getElementById("btnBacktestModeBatch").classList.remove("active");
+    document.getElementById("backtestManualArea").classList.remove("hidden");
+    document.getElementById("backtestBatchArea").classList.add("hidden");
+  });
+  
+  document.getElementById("btnRunBatchBacktest")?.addEventListener("click", runBatchBacktest);
+  document.getElementById("btnAddManualMock")?.addEventListener("click", addManualMockTrade);
+  document.getElementById("btnSaveBacktest")?.addEventListener("click", saveBacktestRun);
+  document.getElementById("btnClearBacktest")?.addEventListener("click", clearSandbox);
+  
+  document.getElementById("backtestSopSelect")?.addEventListener("change", () => {
+    renderSavedBacktests();
+    updateBacktesterUI();
+  });
+}
+
+function showImportPreview(incoming) {
+  const currentClosed = closedTrades();
+  let currentTotal = 0;
+  const currentSeries = [{ value: 0 }];
+  currentClosed.forEach(t => {
+    currentTotal += rValue(t);
+    currentSeries.push({ value: currentTotal });
+  });
+  
+  const mergedTrades = [...state.trades];
+  incoming.trades.forEach(inTrade => {
+    const idx = mergedTrades.findIndex(t => t.id === inTrade.id);
+    if (idx >= 0) {
+      mergedTrades[idx] = inTrade;
+    } else {
+      mergedTrades.push(inTrade);
+    }
+  });
+  
+  const mergedClosed = mergedTrades.filter(t => t.status === "closed").sort((a, b) => a.date.localeCompare(b.date));
+  let mergedTotal = 0;
+  const mergedSeries = [{ value: 0 }];
+  mergedClosed.forEach(t => {
+    mergedTotal += rValue(t);
+    mergedSeries.push({ value: mergedTotal });
+  });
+  
+  let newCount = 0;
+  let duplicateCount = 0;
+  incoming.trades.forEach(inTrade => {
+    const exists = state.trades.some(t => t.id === inTrade.id);
+    if (exists) duplicateCount++;
+    else newCount++;
+  });
+  
+  const content = `
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <p style="font-size:13px; line-height:1.45;">We compared your backup file with current local data. Select how you want to import your data.</p>
+      
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;">
+        <div class="status-card" style="padding:10px; text-align:center; background:var(--paper-strong); border:1px solid var(--hairline); border-radius:10px;">
+          <span style="font-size:11px; color:var(--muted); display:block;">Incoming Trades</span>
+          <strong style="font-size:18px;">${incoming.trades.length}</strong>
+          <small class="muted" style="font-size:10px; display:block; opacity:0.8;">(${newCount} new, ${duplicateCount} duplicate)</small>
+        </div>
+        <div class="status-card" style="padding:10px; text-align:center; background:var(--paper-strong); border:1px solid var(--hairline); border-radius:10px;">
+          <span style="font-size:11px; color:var(--muted); display:block;">SOPs</span>
+          <strong style="font-size:18px;">${incoming.sops.length}</strong>
+        </div>
+        <div class="status-card" style="padding:10px; text-align:center; background:var(--paper-strong); border:1px solid var(--hairline); border-radius:10px;">
+          <span style="font-size:11px; color:var(--muted); display:block;">Accounts</span>
+          <strong style="font-size:18px;">${incoming.accounts.length}</strong>
+        </div>
+      </div>
+      
+      <div>
+        <strong style="font-size:12px; display:block; margin-bottom:6px;">Projected R-Curve Projection (Dashed: Current / Solid: Merged)</strong>
+        <div style="border:1px solid var(--hairline); border-radius:14px; padding:10px; background:var(--canvas);">
+          <svg id="importCompareChart" viewBox="0 0 760 240" style="width:100%; height:180px;"></svg>
+        </div>
+      </div>
+      
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+        <button class="primary-button" id="btnConfirmMerge" style="background:var(--green); border-color:var(--green); color:white;">Smart Merge (Recommended)</button>
+        <span style="font-size:11px; color:var(--muted); margin-top:-6px;">Combines backup with local data. Duplicate IDs will be updated.</span>
+        
+        <button class="primary-button danger" id="btnConfirmOverwrite" style="background:var(--red); border-color:var(--red); color:white;">Full Overwrite Restore</button>
+        <span style="font-size:11px; color:var(--muted); margin-top:-6px;">Erase current local database and replace it completely with backup.</span>
+      </div>
+    </div>
+  `;
+  
+  openModal("Import Backup", "Data Manager", content);
+  
+  setTimeout(() => {
+    renderDualLineChart("importCompareChart", currentSeries, mergedSeries);
+  }, 100);
+  
+  document.getElementById("btnConfirmMerge")?.addEventListener("click", () => {
+    state.trades = mergedTrades;
+    incoming.sops.forEach(inSop => {
+      const idx = state.sops.findIndex(s => s.id === inSop.id);
+      if (idx >= 0) state.sops[idx] = { ...state.sops[idx], ...inSop };
+      else state.sops.push(inSop);
+    });
+    incoming.accounts.forEach(inAcct => {
+      const idx = state.accounts.findIndex(a => a.id === inAcct.id);
+      if (idx >= 0) state.accounts[idx] = inAcct;
+      else state.accounts.push(inAcct);
+    });
+    if (incoming.backtests) {
+      if (!state.backtests) state.backtests = [];
+      incoming.backtests.forEach(inBt => {
+        if (!state.backtests.some(b => b.id === inBt.id)) {
+          state.backtests.push(inBt);
+        }
+      });
+    }
+    
+    saveState();
+    closeModal();
+    playSound("success");
+    renderAll();
+    toast("Data merged successfully.");
+  });
+  
+  document.getElementById("btnConfirmOverwrite")?.addEventListener("click", () => {
+    if (!confirm("Are you absolutely sure you want to delete all current data and restore this backup? This cannot be undone.")) return;
+    state = incoming;
+    saveState();
+    closeModal();
+    playSound("success");
+    renderAll();
+    toast("Database fully restored.");
+  });
+}
+
+function renderDualLineChart(id, currentSeries, projectedSeries) {
+  const svg = document.getElementById(id);
+  if (!svg) return;
+  
+  const width = 760;
+  const height = 240;
+  const pad = 32;
+  
+  const currentValues = currentSeries.map(p => p.value);
+  const projectedValues = projectedSeries.map(p => p.value);
+  const allValues = [...currentValues, ...projectedValues, 0];
+  
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues, 1);
+  const spread = Math.max(max - min, 1);
+  
+  const mapPoints = (series) => series.map((item, index) => {
+    const x = pad + (index / Math.max(series.length - 1, 1)) * (width - pad * 2);
+    const y = height - pad - ((item.value - min) / spread) * (height - pad * 2);
+    return { x, y };
+  });
+  
+  const currentPoints = mapPoints(currentSeries);
+  const projectedPoints = mapPoints(projectedSeries);
+  
+  const currentPath = currentPoints.map(p => `${p.x},${p.y}`).join(" ");
+  const projectedPath = projectedPoints.map(p => `${p.x},${p.y}`).join(" ");
+  const zeroY = height - pad - ((0 - min) / spread) * (height - pad * 2);
+  
+  svg.innerHTML = `
+    <line class="grid-line" x1="${pad}" y1="${pad}" x2="${width - pad}" y2="${pad}" stroke="var(--hairline)"></line>
+    <text class="axis-label" x="${pad}" y="${pad - 10}" fill="var(--muted)" font-size="10px">${formatR(max)}</text>
+    <line class="zero-line" x1="${pad}" y1="${zeroY}" x2="${width - pad}" y2="${zeroY}" stroke="var(--hairline-strong)"></line>
+    <text class="axis-label" x="${pad}" y="${zeroY - 8}" fill="var(--muted)" font-size="10px">0R</text>
+    <text class="axis-label" x="${pad}" y="${height - 8}" fill="var(--muted)" font-size="10px">${formatR(min)}</text>
+    
+    <!-- Current Curve (Dashed Blue) -->
+    ${currentPoints.length ? `<polyline fill="none" stroke="var(--blue)" stroke-width="2" stroke-dasharray="5,5" points="${currentPath}"></polyline>` : ''}
+    
+    <!-- Projected Curve (Solid Green) -->
+    ${projectedPoints.length ? `<polyline fill="none" stroke="var(--green)" stroke-width="3" points="${projectedPath}"></polyline>` : ''}
+  `;
+}
+
 async function initApp() {
   state = await loadState();
   await saveState(); // Ensure initialized defaults or migrated data are saved
   renderAll();
   resetTradeForm();
   
+  // Phase 5 Initializations
+  initCardSpotlightHover();
+  initCalendarHover();
+  initBacktesterListeners();
+  updateStorageEstimate();
+  updateSyncStatus();
+  
+  window.addEventListener("online", updateSyncStatus);
+  window.addEventListener("offline", updateSyncStatus);
+  
+  // Register service worker with version update banner
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js").catch((err) => console.log("SW failed", err));
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      if (reg.waiting) {
+        showUpdateBanner(reg.waiting);
+      }
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdateBanner(newWorker);
+          }
+        });
+      });
+    }).catch((err) => console.log("SW failed", err));
+    
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      window.location.reload();
+    });
   }
 }
 

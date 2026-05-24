@@ -2254,3 +2254,290 @@ tbody tr:hover {
   margin: 16px 0 8px 0;
   color: var(--ink);
 }
+
+/* --- Phase 5: High-End UI Texture & Backtester Styles --- */
+
+/* Sync status dot in brand */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+.status-dot.online {
+  background-color: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+.status-dot.offline {
+  background-color: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+/* Card Spotlight Glow */
+.home-card::before, 
+.play-card::before, 
+.sop-card-front::before, 
+.sop-card-back::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(350px circle at var(--mouse-x, -999px) var(--mouse-y, -999px), rgba(0, 113, 227, 0.07), transparent 80%);
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.4s ease;
+  opacity: 0.85;
+}
+[data-theme="dark"] .home-card::before, 
+[data-theme="dark"] .play-card::before,
+[data-theme="dark"] .sop-card-front::before, 
+[data-theme="dark"] .sop-card-back::before {
+  background: radial-gradient(350px circle at var(--mouse-x, -999px) var(--mouse-y, -999px), rgba(10, 132, 255, 0.12), transparent 80%);
+}
+
+/* Card 3D Setup */
+.home-card {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+/* Shimmer Skeleton Screen */
+.is-skeleton .panel-head h2,
+.is-skeleton .panel-head p,
+.is-skeleton .metric-card strong,
+.is-skeleton .metric-card span,
+.is-skeleton .metric-card small,
+.is-skeleton .insight-card strong,
+.is-skeleton .insight-card span,
+.is-skeleton .insight-card small,
+.is-skeleton .line-chart,
+.is-skeleton .home-sparkline,
+.is-skeleton .status-card,
+.is-skeleton .day-trade,
+.is-skeleton table tbody tr td,
+.is-skeleton .mini-sparkline {
+  color: transparent !important;
+  background: linear-gradient(90deg, var(--hairline) 25%, var(--hairline-strong) 50%, var(--hairline) 75%) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.2s infinite linear !important;
+  border-color: transparent !important;
+  border-radius: 6px;
+  pointer-events: none;
+}
+.is-skeleton img, 
+.is-skeleton svg, 
+.is-skeleton iframe, 
+.is-skeleton ul, 
+.is-skeleton select, 
+.is-skeleton input, 
+.is-skeleton textarea,
+.is-skeleton .card-flip-btn,
+.is-skeleton .text-button {
+  opacity: 0 !important;
+  transition: opacity 0.2s ease;
+}
+
+@keyframes shimmer {
+  0% { background-position: -120% 0; }
+  100% { background-position: 120% 0; }
+}
+
+/* Blur fade in for views */
+@keyframes viewIn {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* 3D Flippable SOP Card Container */
+.sop-card-container {
+  perspective: 1200px;
+  min-height: 250px;
+  position: relative;
+}
+
+.sop-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  transition: transform 0.65s var(--spring);
+  transform-style: preserve-3d;
+}
+
+.sop-card-container.flipped .sop-card-inner {
+  transform: rotateY(180deg);
+}
+
+.sop-card-front, .sop-card-back {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.sop-card-front {
+  background: var(--paper-strong);
+  color: var(--ink);
+  z-index: 2;
+}
+
+.sop-card-back {
+  background: var(--paper);
+  color: var(--ink);
+  transform: rotateY(180deg);
+  z-index: 1;
+}
+
+.card-flip-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: background 0.2s, transform 0.2s;
+  font-size: 13px;
+}
+.card-flip-btn:hover {
+  background: rgba(255, 255, 255, 0.8);
+  transform: scale(1.1);
+  color: var(--ink);
+}
+[data-theme="dark"] .card-flip-btn {
+  background: rgba(44, 44, 46, 0.4);
+}
+[data-theme="dark"] .card-flip-btn:hover {
+  background: rgba(44, 44, 46, 0.8);
+}
+
+.sop-card-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 10px;
+}
+
+.sop-card-stat {
+  display: flex;
+  flex-direction: column;
+}
+.sop-card-stat span {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+.sop-card-stat strong {
+  font-size: 15px;
+  font-weight: 700;
+}
+.sop-card-stat strong.pos {
+  color: var(--green);
+}
+.sop-card-stat strong.neg {
+  color: var(--red);
+}
+
+.mini-sparkline-container {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.mini-sparkline {
+  width: 100%;
+  height: 100%;
+}
+
+/* Backtester Layout */
+.backtester-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 20px;
+}
+@media (max-width: 900px) {
+  .backtester-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.compact-table table {
+  font-size: 12px;
+}
+.compact-table th, .compact-table td {
+  padding: 6px 10px !important;
+}
+
+/* Service Worker Update Notification Banner */
+.update-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-50px);
+  background: rgba(0, 113, 227, 0.94);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14px;
+  box-shadow: 0 10px 30px rgba(0, 113, 227, 0.35);
+  backdrop-filter: blur(10px);
+  z-index: 9999;
+  cursor: pointer;
+  transition: transform 0.4s var(--spring), opacity 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  pointer-events: none;
+}
+.update-banner.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+[data-theme="dark"] .update-banner {
+  background: rgba(10, 132, 255, 0.94);
+  box-shadow: 0 10px 30px rgba(10, 132, 255, 0.35);
+}
+
+.dual-chart-line.current {
+  stroke: var(--blue);
+  stroke-dasharray: 4, 4;
+}
+.dual-chart-line.projected {
+  stroke: var(--green);
+}
+

@@ -14,7 +14,7 @@
           <div class="brand">
             <div class="brand-mark">T</div>
             <div>
-              <p>TRD Journey</p>
+              <p>TRD Journey <span id="syncStatusDot" class="status-dot online" title="Online"></span></p>
               <span>Trading Operating System</span>
             </div>
           </div>
@@ -317,6 +317,7 @@
               <button class="segment" data-review-panel="charts" type="button">Charts</button>
               <button class="segment" data-review-panel="calendar" type="button">Calendar</button>
               <button class="segment" data-review-panel="playbook" type="button">Playbook</button>
+              <button class="segment" data-review-panel="backtester" type="button">Backtester</button>
             </div>
 
             <div class="review-panel active" id="review-insights">
@@ -376,6 +377,151 @@
                 <div class="playbook-grid" id="playbookGrid"></div>
               </section>
             </div>
+
+            <div class="review-panel" id="review-backtester">
+              <div class="backtester-grid">
+                <!-- Left Panel: Form & Mock List -->
+                <div class="panel" style="padding:22px;">
+                  <div class="panel-head">
+                    <div>
+                      <p class="eyebrow">Sandbox</p>
+                      <h2>SOP Backtest Sandbox</h2>
+                    </div>
+                  </div>
+                  
+                  <div class="form-row" style="margin-top:14px;">
+                    <label>SOP
+                      <select id="backtestSopSelect" style="width:100%;"></select>
+                    </label>
+                    <label>Initial Capital ($)
+                      <input id="backtestCapital" type="number" value="10000" min="100" step="100" />
+                    </label>
+                  </div>
+                  
+                  <div class="form-row">
+                    <label>Risk Mode
+                      <select id="backtestRiskMode">
+                        <option value="fixed-usd">Fixed USD ($)</option>
+                        <option value="fixed-percent">Fixed Percent (%)</option>
+                      </select>
+                    </label>
+                    <label>Risk Value
+                      <input id="backtestRiskVal" type="number" value="100" min="1" step="10" />
+                    </label>
+                  </div>
+
+                  <div class="segment-control compact" style="margin-bottom:14px; margin-top:10px;">
+                    <button class="segment active" id="btnBacktestModeBatch" type="button">Batch Input</button>
+                    <button class="segment" id="btnBacktestModeManual" type="button">Manual Input</button>
+                  </div>
+
+                  <!-- Batch Mode -->
+                  <div id="backtestBatchArea" style="display:grid; gap:10px;">
+                    <label>Batch Paste R-Multiples
+                      <textarea id="backtestBatchR" rows="3" placeholder="e.g. 2, -1, 3.5, -1, 1.5, 4, -1"></textarea>
+                    </label>
+                    <button class="primary-button" id="btnRunBatchBacktest" type="button">Generate Curve</button>
+                  </div>
+
+                  <!-- Manual Mode -->
+                  <div id="backtestManualArea" class="hidden" style="display:grid; gap:10px;">
+                    <div class="form-row">
+                      <label>R Multiple
+                        <input id="backtestManualR" type="number" step="0.1" placeholder="e.g. 2.5 or -1" />
+                      </label>
+                      <label>Setup Name (Optional)
+                        <input id="backtestManualSetup" type="text" placeholder="e.g. Breakout" />
+                      </label>
+                    </div>
+                    <button class="primary-button" id="btnAddManualMock" type="button">Add Trade</button>
+                  </div>
+
+                  <div style="margin-top:16px; display:flex; gap:10px;">
+                    <button class="ghost-button" id="btnSaveBacktest" type="button" style="flex:1;">Save Run</button>
+                    <button class="ghost-button danger" id="btnClearBacktest" type="button" style="flex:1;">Clear Sandbox</button>
+                  </div>
+
+                  <div style="margin-top:24px;">
+                    <h3 style="font-size:15px; margin-bottom:8px;">Mock Trades (<span id="backtestCount">0</span>)</h3>
+                    <div class="table-wrap compact-table" style="max-height:160px; overflow-y:auto; border:1px solid var(--hairline); border-radius:10px;">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>R-Multiple</th>
+                            <th>P&L ($)</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody id="backtestRows"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right Panel: Analytics & Saved runs -->
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                  <div class="panel" style="padding:22px;">
+                    <div class="panel-head">
+                      <div>
+                        <p class="eyebrow">Performance</p>
+                        <h2>Backtest Analytics</h2>
+                      </div>
+                    </div>
+                    
+                    <div class="chart-container" style="position:relative; margin:16px 0;">
+                      <svg class="line-chart" id="backtestChart" viewBox="0 0 760 260" style="height:200px; width:100%;"></svg>
+                    </div>
+
+                    <div class="metric-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px;">
+                      <article class="metric-card mini" style="padding:10px;"><span>Profit (R)</span><strong id="btMetricProfitR" style="font-size:18px;">0.00R</strong></article>
+                      <article class="metric-card mini" style="padding:10px;"><span>Profit ($)</span><strong id="btMetricProfitUSD" style="font-size:18px;">$0</strong></article>
+                      <article class="metric-card mini" style="padding:10px;"><span>Win Rate</span><strong id="btMetricWinRate" style="font-size:18px;">0%</strong></article>
+                      <article class="metric-card mini" style="padding:10px;"><span>Expectancy</span><strong id="btMetricExpectancy" style="font-size:18px;">0.00R</strong></article>
+                      <article class="metric-card mini" style="padding:10px;"><span>Max Drawdown</span><strong id="btMetricMaxDD" style="font-size:18px;">0.00R</strong></article>
+                      <article class="metric-card mini" style="padding:10px;"><span>Profit Factor</span><strong id="btMetricPF" style="font-size:18px;">0.00</strong></article>
+                    </div>
+                  </div>
+
+                  <!-- Execution Gap Contrast Panel -->
+                  <div class="panel" id="btComparePanel" style="display:none; padding:22px;">
+                    <div class="panel-head">
+                      <div>
+                        <p class="eyebrow">Execution Gap</p>
+                        <h3>Backtest vs Live Execution</h3>
+                      </div>
+                    </div>
+                    <div style="display:grid; gap:10px; margin-top:14px;">
+                      <div style="display:flex; justify-content:space-between; font-size:13px; border-bottom:1px solid var(--hairline); padding-bottom:6px;">
+                        <span>Win Rate:</span>
+                        <strong id="compWinRate">Live: 0% / BT: 0% (Gap: 0%)</strong>
+                      </div>
+                      <div style="display:flex; justify-content:space-between; font-size:13px; border-bottom:1px solid var(--hairline); padding-bottom:6px;">
+                        <span>Expectancy:</span>
+                        <strong id="compExpectancy">Live: 0R / BT: 0R (Gap: 0R)</strong>
+                      </div>
+                      <div style="display:flex; justify-content:space-between; font-size:13px;">
+                        <span>Profit Factor:</span>
+                        <strong id="compPF">Live: 0 / BT: 0</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Saved Runs panel -->
+                  <div class="panel" style="padding:22px;">
+                    <div class="panel-head">
+                      <div>
+                        <p class="eyebrow">Saved Library</p>
+                        <h3>Saved Backtests</h3>
+                      </div>
+                    </div>
+                    <div id="savedBacktestList" style="display:grid; gap:10px; margin-top:14px; max-height:180px; overflow-y:auto;">
+                      <p class="muted">No saved backtests for this SOP.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
 
           <section class="view" id="settings" data-title="System" data-kicker="Preferences">
@@ -404,6 +550,9 @@
                   <input id="importJsonInput" type="file" accept="application/json,.json" />
                 </label>
                 <button class="icon-button danger" id="resetBtn" aria-label="Reset demo data" title="Reset demo data">Reset Demo</button>
+              </div>
+              <div style="margin-top:14px; font-size:12px; color:var(--muted); text-align:right;">
+                Storage: <strong id="storageEstimate" style="color:var(--ink);">Checking...</strong>
               </div>
             </section>
           </section>
