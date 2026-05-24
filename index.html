@@ -9,74 +9,26 @@
   </head>
   <body>
     <div class="app-shell" id="appShell">
-      <section class="home" id="home">
-        <div class="home-top">
-          <div class="brand">
-            <div class="brand-mark">T</div>
-            <div>
-              <p>TRD Journey <span id="syncStatusDot" class="status-dot online" title="Online"></span></p>
-              <span>Trading Operating System</span>
-            </div>
-          </div>
-          <div class="home-status">
-            <strong id="guardrailText">Max daily loss: -2R</strong>
-            <span id="guardrailMeta">Max trades: 3</span>
-          </div>
-          <div style="display: flex; gap: 10px;">
-            <button class="theme-toggle" type="button" aria-label="Switch theme">☾</button>
-            <button class="language-toggle" type="button" aria-label="Switch language">中文</button>
-          </div>
-        </div>
-
-        <div class="home-hero">
-          <p class="eyebrow" id="todayLabel">Today</p>
-          <h1>Choose your next move.</h1>
-          <p class="home-copy">Plan quietly. Execute cleanly. Review what the data actually says.</p>
-        </div>
-
-        <div class="home-grid" aria-label="TRD Journey modules">
-          <button class="home-card" data-open-module="overview">
-            <span>Today</span>
-            <strong id="homeTodayValue">Ready</strong>
-            <small id="homeTodayMeta">Week status</small>
-            <svg class="home-sparkline" id="homeTodaySparkline" viewBox="0 0 160 42" aria-hidden="true"></svg>
-          </button>
-          <button class="home-card" data-open-module="journal">
-            <span>Journal</span>
-            <strong id="homeJournalValue">0 trades</strong>
-            <small id="homeJournalMeta">Log or edit execution</small>
-            <div class="home-mini-status" id="homeJournalStatus" aria-hidden="true"></div>
-          </button>
-          <button class="home-card" data-open-module="review">
-            <span>Review</span>
-            <strong id="homeReviewValue">0.00R</strong>
-            <small id="homeReviewMeta">Expectancy and behavior</small>
-            <div class="home-leak-meter" id="homeLeakMeter" aria-hidden="true"><i></i></div>
-          </button>
-          <button class="home-card" data-open-module="settings">
-            <span>System</span>
-            <strong id="homeSystemValue">Configured</strong>
-            <small id="homeSystemMeta">Preferences and backup</small>
-            <div class="home-health-dot" id="homeSystemHealth" aria-hidden="true"></div>
-          </button>
-        </div>
-      </section>
-
-      <section class="module-shell" id="moduleShell" aria-live="polite">
-        <header class="module-bar">
-          <button class="back-button" id="backHomeBtn" type="button" aria-label="Back to home">Back</button>
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-mark">T</div>
           <div>
-            <p class="eyebrow" id="moduleKicker">Module</p>
-            <h2 id="moduleTitle">Today</h2>
+            <p>TRD Journey <span id="syncStatusDot" class="status-dot online" title="Online"></span></p>
+            <span>Trading Operating System</span>
           </div>
-          <div class="module-actions">
-            <button class="theme-toggle" type="button" aria-label="Switch theme">☾</button>
-            <button class="language-toggle" type="button" aria-label="Switch language">中文</button>
-            <button class="primary-button module-action" data-view-shortcut="journal" type="button">Log Trade</button>
-          </div>
-        </header>
+        </div>
+        <div class="header-status">
+          <strong id="guardrailText">Max daily loss: -2R</strong>
+          <span id="guardrailMeta">Max trades: 3</span>
+        </div>
+        <div class="header-actions">
+          <button class="theme-toggle" type="button" aria-label="Switch theme">☾</button>
+          <button class="language-toggle" type="button" aria-label="Switch language">中文</button>
+          <button class="primary-button module-action" id="headerLogTradeBtn" type="button">Log Trade</button>
+        </div>
+      </header>
 
-        <main class="main">
+      <main class="main">
           <section class="view active" id="overview" data-title="Today" data-kicker="Command Center">
             <div class="workflow-grid">
               <form class="panel" id="planForm">
@@ -557,8 +509,29 @@
             </section>
           </section>
         </main>
-      </section>
-    </div>
+        
+        <!-- iOS Bottom Dock Navigation -->
+        <nav class="ios-dock-container">
+          <div class="ios-dock">
+            <button class="dock-item active" data-dock-module="overview" title="Today">
+              <span class="dock-icon">📅</span>
+              <span class="dock-label">Today</span>
+            </button>
+            <button class="dock-item" data-dock-module="journal" title="Journal">
+              <span class="dock-icon">✍️</span>
+              <span class="dock-label">Journal</span>
+            </button>
+            <button class="dock-item" data-dock-module="review" title="Review">
+              <span class="dock-icon">📊</span>
+              <span class="dock-label">Review</span>
+            </button>
+            <button class="dock-item" data-dock-module="settings" title="System">
+              <span class="dock-icon">⚙️</span>
+              <span class="dock-label">System</span>
+            </button>
+          </div>
+        </nav>
+      </div>
 
     <div class="modal-backdrop hidden" id="modalBackdrop" aria-hidden="true">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">

@@ -407,46 +407,202 @@ h3 {
 
 .module-shell {
   position: fixed;
-  inset: 18px;
-  z-index: 10;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 28px;
-  background: rgba(248, 248, 250, 0.86);
-  backdrop-filter: blur(26px) saturate(160%);
-  box-shadow: 0 34px 120px rgba(0, 0, 0, 0.18);
-  overflow: auto;
-  opacity: 0;
-  transform: translateY(42px) scale(0.955);
-  transform-origin: 50% 88%;
+/* --- Phase 6: App Header, Bottom Dock and Collapsible Panels --- */
+
+.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  padding: 0 24px;
+  background: rgba(245, 245, 247, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--hairline);
+  z-index: 1000;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background var(--motion-base) var(--ease), border-color var(--motion-base) var(--ease);
+}
+[data-theme="dark"] .app-header {
+  background: rgba(0, 0, 0, 0.72);
+  border-bottom: 1px solid var(--hairline-strong);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-mark {
+  background: var(--blue);
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 18px;
+}
+.brand p {
+  margin: 0;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ink);
+}
+.brand span {
+  font-size: 10px;
+  color: var(--muted);
+  display: block;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--hairline);
+  background: var(--paper);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .header-status {
+    display: none;
+  }
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ios-dock-container {
+  position: fixed;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
   pointer-events: none;
-  transition: opacity var(--motion-base) var(--ease), transform var(--motion-sheet) var(--spring), box-shadow var(--motion-sheet) var(--ease);
+  z-index: 1000;
 }
 
-.app-shell.is-in-module .module-shell {
-  opacity: 1;
-  transform: translateY(0) scale(1);
+.ios-dock {
   pointer-events: auto;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 28px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  transition: background var(--motion-base) var(--ease), border-color var(--motion-base) var(--ease);
+}
+[data-theme="dark"] .ios-dock {
+  background: rgba(28, 28, 30, 0.45);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
 }
 
-.app-shell[data-active-module="overview"] .module-shell {
-  transform-origin: 12% 88%;
+.dock-item {
+  position: relative;
+  border: none;
+  background: transparent;
+  border-radius: 20px;
+  width: 58px;
+  height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted);
+  transition: transform 0.25s var(--spring), background 0.25s var(--ease), color 0.25s var(--ease);
+}
+.dock-item:hover {
+  transform: scale(1.16) translateY(-4px);
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--ink);
+}
+[data-theme="dark"] .dock-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.dock-item.active {
+  color: var(--blue);
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: var(--shadow-soft);
+}
+[data-theme="dark"] .dock-item.active {
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.app-shell[data-active-module="journal"] .module-shell {
-  transform-origin: 38% 88%;
+.dock-icon {
+  font-size: 20px;
+  line-height: 1;
 }
 
-.app-shell[data-active-module="review"] .module-shell {
-  transform-origin: 63% 88%;
+.dock-label {
+  font-size: 9px;
+  font-weight: 700;
+  margin-top: 3px;
 }
 
-.app-shell[data-active-module="settings"] .module-shell {
-  transform-origin: 88% 88%;
+.dock-item.active::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--blue);
 }
 
-.app-shell.is-closing-module .module-shell {
-  opacity: 0;
-  transform: translateY(26px) scale(0.975);
+/* Card Collapsible styling */
+.panel {
+  position: relative;
+  transition: max-height 0.4s var(--ease), padding var(--motion-base) var(--ease), min-height 0.3s ease;
+}
+.panel.is-collapsed {
+  min-height: 0 !important;
+  max-height: 60px !important;
+  overflow: hidden;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+  border-color: var(--hairline-strong) !important;
+}
+.panel.is-collapsed > *:not(.panel-head) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+}
+.panel-collapse-btn {
+  border: none;
+  background: var(--hairline);
+  color: var(--muted);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  cursor: pointer;
+  transition: transform 0.3s var(--spring), background 0.2s, color 0.2s;
+  margin-left: 8px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.panel-collapse-btn:hover {
+  background: var(--hairline-strong);
+  color: var(--ink);
+}
+.panel.is-collapsed .panel-collapse-btn {
+  transform: rotate(-90deg);
 }
 
 .module-bar {
@@ -648,8 +804,9 @@ h3 {
 }
 
 .main {
-  width: min(100%, 1480px);
-  padding: 34px;
+  width: min(1180px, calc(100% - 44px));
+  margin: 0 auto;
+  padding: 94px 0 110px;
   display: grid;
   gap: 24px;
 }

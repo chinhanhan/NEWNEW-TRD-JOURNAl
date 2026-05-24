@@ -629,9 +629,13 @@ function renderAll() {
   renderPlaybook();
   renderThemeButtons();
   applyLanguage();
+  
+  // Custom panels collapse
+  initCollapsiblePanels();
 }
 
 function renderHomeSummary() {
+  if (!document.getElementById("home")) return;
   const [weekStart, weekEnd] = weekRange();
   const weekTrades = tradesInRange(weekStart, weekEnd);
   const week = metrics(weekTrades);
@@ -654,12 +658,22 @@ function renderHomeSummary() {
 }
 
 function populateStaticLabels() {
-  document.getElementById("todayLabel").textContent = new Date().toLocaleDateString(language === "zh" ? "zh-CN" : "en", { weekday: "long", month: "long", day: "numeric" });
-  document.getElementById("guardrailText").textContent = `${t("maxDailyLoss")}: ${state.preferences.dailyMaxLossR}R`;
-  document.getElementById("guardrailMeta").textContent = `${t("maxTrades")}: ${state.preferences.maxTradesPerDay} | ${t("risk")}: ${money(state.preferences.riskPerTrade)}`;
+  const todayLabel = document.getElementById("todayLabel");
+  if (todayLabel) {
+    todayLabel.textContent = new Date().toLocaleDateString(language === "zh" ? "zh-CN" : "en", { weekday: "long", month: "long", day: "numeric" });
+  }
+  const guardText = document.getElementById("guardrailText");
+  if (guardText) {
+    guardText.textContent = `${t("maxDailyLoss")}: ${state.preferences.dailyMaxLossR}R`;
+  }
+  const guardMeta = document.getElementById("guardrailMeta");
+  if (guardMeta) {
+    guardMeta.textContent = `${t("maxTrades")}: ${state.preferences.maxTradesPerDay} | ${t("risk")}: ${money(state.preferences.riskPerTrade)}`;
+  }
 }
 
 function renderHomeVisuals() {
+  if (!document.getElementById("home")) return;
   renderMiniSparkline("homeTodaySparkline", equitySeries());
   const openCount = openTrades().length;
   const closedCount = closedTrades().length;
@@ -1547,7 +1561,8 @@ function translatePageText() {
 }
 
 function setText(id, text) {
-  document.getElementById(id).textContent = text;
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
 }
 
 function emptyState(text) {
@@ -2074,51 +2089,38 @@ function resetDemo() {
 function openModule(id, source = null) {
   const view = document.getElementById(id);
   if (!view) return;
-  const shell = document.getElementById("appShell");
-  clearTimeout(interactionState.transitionTimer);
-  document.querySelectorAll(".home-card").forEach((item) => item.classList.remove("is-source", "is-dimming"));
-  const sourceCard = source?.closest?.(".home-card") || document.querySelector(`[data-open-module="${id}"]`);
-  sourceCard?.classList.add("is-source");
-  document.querySelectorAll(".home-card").forEach((item) => {
-    if (item !== sourceCard) item.classList.add("is-dimming");
-  });
-  interactionState.sourceModule = id;
+  
+  playSound("switch");
   activeModule = id;
-  shell.dataset.activeModule = id;
-  shell.classList.remove("is-closing-module");
-  shell.classList.add("is-opening-module", "is-in-module");
   
-  document.querySelectorAll(".view").forEach((item) => item.classList.toggle("active", item.id === id));
+  // Toggle views
+  document.querySelectorAll(".view").forEach((item) => {
+    item.classList.toggle("active", item.id === id);
+  });
   
-  // Trigger shimmer skeleton loaders on opening
+  // Update Dock active states
+  document.querySelectorAll(".dock-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.dockModule === id);
+  });
+  
+  // Trigger shimmer skeleton loaders
   const mainEl = document.querySelector(".main");
   if (mainEl) {
     mainEl.classList.add("is-skeleton");
     setTimeout(() => mainEl.classList.remove("is-skeleton"), 240);
   }
   
-  setText("moduleTitle", view.dataset.title || "Module");
-  setText("moduleKicker", view.dataset.kicker || "TRD Journey");
-  document.querySelector(".module-action").classList.toggle("hidden", id === "journal");
+  // Custom header Log Trade visibility
+  const actionBtn = document.getElementById("headerLogTradeBtn");
+  if (actionBtn) {
+    actionBtn.classList.toggle("hidden", id === "journal");
+  }
+  
   window.scrollTo({ top: 0, behavior: "smooth" });
-  interactionState.transitionTimer = setTimeout(() => {
-    shell.classList.remove("is-opening-module");
-  }, 430);
 }
 
 function closeModule() {
-  const shell = document.getElementById("appShell");
-  clearTimeout(interactionState.transitionTimer);
-  shell.classList.add("is-closing-module");
-  shell.classList.remove("is-opening-module");
-  activeModule = null;
-  shell.classList.remove("is-in-module");
-  interactionState.transitionTimer = setTimeout(() => {
-    shell.classList.remove("is-closing-module");
-    shell.removeAttribute("data-active-module");
-    document.querySelectorAll(".home-card").forEach((item) => item.classList.remove("is-source", "is-dimming"));
-    interactionState.sourceModule = null;
-  }, 360);
+  openModule("overview");
 }
 
 function switchLanguage() {
@@ -2156,7 +2158,7 @@ document.querySelectorAll(".theme-toggle").forEach((button) => {
   button.addEventListener("click", switchTheme);
 });
 
-document.getElementById("backHomeBtn").addEventListener("click", closeModule);
+document.getElementById("backHomeBtn")?.addEventListener("click", closeModule);
 
 document.getElementById("tradeForm").addEventListener("submit", saveTradeFromForm);
 document.getElementById("cancelEditBtn").addEventListener("click", resetTradeForm);
@@ -3141,16 +3143,74 @@ function renderDualLineChart(id, currentSeries, projectedSeries) {
   `;
 }
 
+function initCollapsiblePanels() {
+  const panels = document.querySelectorAll(".panel");
+  panels.forEach((panel, idx) => {
+    const head = panel.querySelector(".panel-head");
+    if (!head) return;
+    if (head.querySelector(".panel-collapse-btn")) return;
+    
+    const titleText = head.querySelector("h2")?.textContent || head.querySelector("h3")?.textContent || "";
+    const key = "trd-panel-collapsed-" + (panel.id || titleText.replace(/[^a-zA-Z0-9]/g, "") || idx);
+    
+    const isCollapsed = localStorage.getItem(key) === "true";
+    if (isCollapsed) {
+      panel.classList.add("is-collapsed");
+    }
+    
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "panel-collapse-btn";
+    btn.innerHTML = isCollapsed ? "▲" : "▼";
+    btn.title = "Toggle collapse";
+    
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      playSound("click");
+      const currentlyCollapsed = panel.classList.toggle("is-collapsed");
+      btn.innerHTML = currentlyCollapsed ? "▲" : "▼";
+      localStorage.setItem(key, String(currentlyCollapsed));
+    });
+    
+    head.appendChild(btn);
+  });
+}
+
+function initLayoutListeners() {
+  // Bottom Dock navigation
+  document.querySelectorAll(".dock-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      openModule(button.dataset.dockModule, button);
+    });
+  });
+  
+  // Top header "Log Trade" button
+  document.getElementById("headerLogTradeBtn")?.addEventListener("click", () => {
+    openModule("journal");
+    setTimeout(() => {
+      const details = document.getElementById("captureTradeDetails");
+      if (details) {
+        details.open = true;
+        details.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 240);
+  });
+}
+
 async function initApp() {
   state = await loadState();
   await saveState(); // Ensure initialized defaults or migrated data are saved
   renderAll();
   resetTradeForm();
   
-  // Phase 5 Initializations
+  // Initial view defaults to Today tab
+  openModule("overview");
+  
+  // Phase 5 & 6 Initializations
   initCardSpotlightHover();
   initCalendarHover();
   initBacktesterListeners();
+  initLayoutListeners();
   updateStorageEstimate();
   updateSyncStatus();
   
