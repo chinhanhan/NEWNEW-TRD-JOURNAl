@@ -302,6 +302,11 @@
                 <div class="panel-head"><div><p class="eyebrow">Review</p><h2>Current read</h2></div></div>
                 <div class="insight-grid" id="summaryCards"></div>
               </section>
+              <section class="panel" id="insightDetailPanel" style="display:none;">
+                <div class="panel-head"><div><p class="eyebrow" id="insightDetailKicker">Detail</p><h2 id="insightDetailTitle">Metric</h2></div><button class="ghost-button" id="closeInsightDetail">Close</button></div>
+                <svg class="line-chart" id="insightDetailChart" viewBox="0 0 760 300"></svg>
+                <div class="insight-grid" id="insightDetailCards"></div>
+              </section>
             </div>
 
             <div class="review-panel" id="review-charts">

@@ -596,6 +596,37 @@ h3 {
   transform: translateY(1px) scale(0.968);
 }
 
+.insight-card {
+  padding: 18px 22px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 20px;
+  display: grid;
+  gap: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.015);
+  transition: transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+
+.insight-card[data-insight]:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+  background: var(--surface-hover);
+}
+
+.insight-card[data-insight]:active {
+  transform: translateY(1px);
+}
+
+#insightDetailPanel {
+  animation: slideDown 300ms var(--ease);
+  transform-origin: top center;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px) scaleY(0.98); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
 .guardrail-card {
   margin-top: auto;
   border: 1px solid var(--hairline);
@@ -680,6 +711,15 @@ h3 {
   display: inline-grid;
   place-items: center;
   transition: background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), opacity var(--motion-fast) var(--ease);
+}
+
+.text-button.danger {
+  color: var(--red);
+}
+
+.text-button.danger:hover {
+  background: rgba(255, 59, 48, 0.08);
+  border-color: rgba(255, 59, 48, 0.2);
 }
 
 .icon-button,

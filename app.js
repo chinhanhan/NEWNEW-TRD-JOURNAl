@@ -806,17 +806,17 @@ function renderInsights() {
   const worstTrade = [...closedTrades()].sort((a, b) => rValue(a) - rValue(b))[0];
   const s = streak();
   const cards = [
-    ["Week R", formatR(week.totalR), `${week.count} trades this week`],
-    ["Current Streak", s.count ? `${s.count} ${s.direction > 0 ? "winning" : "losing"} days` : "No streak", "Based on active trading days"],
-    ["Best Setup", bestSetup ? bestSetup.name : "No data", bestSetup ? formatR(bestSetup.expectancy) : "Add trades"],
-    ["Weakest Setup", worstSetup ? worstSetup.name : "No data", worstSetup ? formatR(worstSetup.expectancy) : "Add trades"],
-    ["Largest Win", bestTrade ? formatR(rValue(bestTrade)) : "0.00R", bestTrade ? bestTrade.symbol : "No trades"],
-    ["Largest Loss", worstTrade ? formatR(rValue(worstTrade)) : "0.00R", worstTrade ? worstTrade.symbol : "No trades"],
-    ["Process Leak", `${Math.round(processLeakRate() * 100)}%`, "Rule breaks, C trades, weak checklist"],
-    ["Total R", formatR(all.totalR), "All recorded trades"]
+    ["Week R", formatR(week.totalR), `${week.count} trades this week`, "weekR"],
+    ["Current Streak", s.count ? `${s.count} ${s.direction > 0 ? "winning" : "losing"} days` : "No streak", "Based on active trading days", "streak"],
+    ["Best Setup", bestSetup ? bestSetup.name : "No data", bestSetup ? formatR(bestSetup.expectancy) : "Add trades", "bestSetup"],
+    ["Weakest Setup", worstSetup ? worstSetup.name : "No data", worstSetup ? formatR(worstSetup.expectancy) : "Add trades", "worstSetup"],
+    ["Largest Win", bestTrade ? formatR(rValue(bestTrade)) : "0.00R", bestTrade ? bestTrade.symbol : "No trades", "largestWin"],
+    ["Largest Loss", worstTrade ? formatR(rValue(worstTrade)) : "0.00R", worstTrade ? worstTrade.symbol : "No trades", "largestLoss"],
+    ["Process Leak", `${Math.round(processLeakRate() * 100)}%`, "Rule breaks, C trades, weak checklist", "processLeak"],
+    ["Total R", formatR(all.totalR), "All recorded trades", "totalR"]
   ];
-  if (openTrades().length) cards.unshift([t("openTrades"), String(openTrades().length), t("reviewPrompt")]);
-  document.getElementById("summaryCards").innerHTML = cards.map(([title, value, note]) => insightCard(title, value, note)).join("");
+  if (openTrades().length) cards.unshift([t("openTrades"), String(openTrades().length), t("reviewPrompt"), ""]);
+  document.getElementById("summaryCards").innerHTML = cards.map(([title, value, note, key]) => insightCard(title, value, note, key)).join("");
   document.getElementById("statusGrid").innerHTML = [
     ["Plan", state.dailyPlans[todayISO()] ? "Ready" : "Missing", "Pre-market plan"],
     ["Open", `${openTrades(byDate(todayISO())).length}`, "In-progress trades"],
@@ -825,10 +825,11 @@ function renderInsights() {
   ].map(([title, value, note]) => `<article class="status-card"><span>${title}</span><strong>${value}</strong><small>${note}</small></article>`).join("");
 }
 
-function insightCard(title, value, note) {
+function insightCard(title, value, note, insightKey = "") {
   const num = String(value);
   const klass = num.startsWith("-") ? "negative" : num.startsWith("+") ? "positive" : "";
-  return `<article class="insight-card"><span>${safe(title)}</span><strong class="value ${klass}">${safe(value)}</strong><small>${safe(note)}</small></article>`;
+  const clickAttr = insightKey ? ` data-insight="${safe(insightKey)}" style="cursor:pointer;"` : "";
+  return `<article class="insight-card"${clickAttr}><span>${safe(title)}</span><strong class="value ${klass}">${safe(value)}</strong><small>${safe(note)}</small></article>`;
 }
 
 function renderJournal() {
@@ -1209,11 +1210,32 @@ function renderPlaybook() {
         ${(sop.checklist || []).slice(0, 3).map((item) => `<li>${safe(item)}</li>`).join("")}
       </ul>
       <div class="row-actions">
-        <button class="text-button" data-edit-sop="${safe(sop.id)}">Edit SOP</button>
+        <button class="text-button" data-edit-sop="${safe(sop.id)}">Edit</button>
         <button class="text-button" data-add-account="${safe(sop.id)}">Add Account</button>
+        <button class="text-button danger" data-delete-sop="${safe(sop.id)}">Delete</button>
       </div>
     </article>`;
   }).join("");
+}
+
+function deleteSop(id) {
+  const sop = state.sops.find((s) => s.id === id);
+  if (!sop) return;
+  const tradeCount = state.trades.filter((t) => t.sopId === id).length;
+  const msg = tradeCount
+    ? `Delete SOP "${sop.name}" and its ${tradeCount} trade(s)? This cannot be undone.`
+    : `Delete SOP "${sop.name}"? This cannot be undone.`;
+  if (!confirm(msg)) return;
+  state.trades = state.trades.filter((t) => t.sopId !== id);
+  state.accounts = state.accounts.filter((a) => a.sopId !== id);
+  state.sops = state.sops.filter((s) => s.id !== id);
+  if (state.activeSopId === id) {
+    state.activeSopId = state.sops[0]?.id || "";
+    state.activeAccountId = accountsForSop(state.activeSopId)[0]?.id || "";
+  }
+  saveState();
+  renderAll();
+  toast(`SOP "${sop.name}" deleted.`);
 }
 
 function openSopModal(id = "") {
@@ -1935,6 +1957,8 @@ document.body.addEventListener("click", (event) => {
   const image = imageEl?.dataset.image;
   const imageIndex = imageEl?.dataset.index;
   const tv = event.target.closest("[data-tv]")?.dataset.tv;
+  const deleteSopId = event.target.closest("[data-delete-sop]")?.dataset.deleteSop;
+  const insightKey = event.target.closest("[data-insight]")?.dataset.insight;
   if (shortcut) openModule(shortcut);
   if (detail) openDetail(detail);
   if (edit) editTrade(edit);
@@ -1977,6 +2001,8 @@ document.body.addEventListener("click", (event) => {
   }
   if (image) openImage(image, imageIndex ? parseInt(imageIndex, 10) : 0);
   if (tv) embedTradingView(tv);
+  if (deleteSopId) deleteSop(deleteSopId);
+  if (insightKey) openInsightDetail(insightKey);
 });
 
 document.body.addEventListener("submit", (event) => {
@@ -2045,6 +2071,107 @@ document.getElementById("settingsForm").addEventListener("submit", (event) => {
   resetTradeForm();
   renderAll();
   toast("Preferences saved.");
+});
+
+function openInsightDetail(key) {
+  const panel = document.getElementById("insightDetailPanel");
+  const chart = document.getElementById("insightDetailChart");
+  const title = document.getElementById("insightDetailTitle");
+  const kicker = document.getElementById("insightDetailKicker");
+  const cards = document.getElementById("insightDetailCards");
+  if (!panel) return;
+
+  const closed = closedTrades();
+  if (!closed.length) { toast("No closed trades yet.", "error"); return; }
+
+  let seriesData = [];
+  let detailCards = [];
+  let chartOptions = {};
+
+  if (key === "weekR" || key === "totalR") {
+    kicker.textContent = key === "weekR" ? "Weekly Trend" : "Cumulative Equity";
+    title.textContent = key === "weekR" ? "R-Value per trade (this week)" : "Equity curve (all trades)";
+    let total = 0;
+    seriesData = [{ value: 0, label: "Start" }, ...closed.map((t) => {
+      total += rValue(t);
+      return { value: total, label: t.date, detail: `${t.symbol} (${formatR(rValue(t))})` };
+    })];
+    const m = metrics();
+    detailCards = [
+      insightCard("Win Rate", `${Math.round(m.winRate * 100)}%`, `${m.wins}W / ${m.losses}L`),
+      insightCard("Expectancy", formatR(m.expectancy), "Per trade average"),
+      insightCard("Profit Factor", Number.isFinite(m.profitFactor) ? m.profitFactor.toFixed(2) : "∞", "Gross profit / Gross loss"),
+      insightCard("Max DD", formatR(m.maxDrawdown), "Worst peak-to-trough"),
+    ];
+  } else if (key === "streak") {
+    kicker.textContent = "Daily Performance";
+    title.textContent = "Daily R over time";
+    const dayMap = {};
+    closed.forEach((t) => { dayMap[t.date] = (dayMap[t.date] || 0) + rValue(t); });
+    const sortedDays = Object.keys(dayMap).sort();
+    seriesData = sortedDays.map((d) => ({ value: dayMap[d], label: d, detail: `Day total: ${formatR(dayMap[d])}` }));
+    const posDays = sortedDays.filter((d) => dayMap[d] > 0).length;
+    const negDays = sortedDays.filter((d) => dayMap[d] < 0).length;
+    detailCards = [
+      insightCard("Green Days", String(posDays), `${Math.round(posDays / sortedDays.length * 100)}% of days`),
+      insightCard("Red Days", String(negDays), `${Math.round(negDays / sortedDays.length * 100)}% of days`),
+      insightCard("Best Day", formatR(Math.max(...Object.values(dayMap))), "Single day best"),
+      insightCard("Worst Day", formatR(Math.min(...Object.values(dayMap))), "Single day worst"),
+    ];
+  } else if (key === "bestSetup" || key === "worstSetup") {
+    kicker.textContent = "Setup Analysis";
+    title.textContent = "Cumulative R by setup";
+    const grouped = Object.entries(groupBy(closed, "setup"));
+    const allSetupCards = grouped.map(([name, list]) => {
+      const m = metrics(list);
+      return insightCard(name, formatR(m.totalR), `${m.count} trades · WR ${Math.round(m.winRate * 100)}%`);
+    });
+    detailCards = allSetupCards;
+    let total = 0;
+    seriesData = [{ value: 0, label: "Start" }, ...closed.map((t) => {
+      total += rValue(t);
+      return { value: total, label: t.setup, detail: `${t.symbol} ${formatR(rValue(t))}` };
+    })];
+  } else if (key === "largestWin" || key === "largestLoss") {
+    kicker.textContent = "Trade Distribution";
+    title.textContent = "Individual trade R-values";
+    seriesData = closed.map((t) => ({ value: rValue(t), label: t.date, detail: `${t.symbol} ${t.setup}` }));
+    const sorted = [...closed].sort((a, b) => rValue(b) - rValue(a));
+    const top3 = sorted.slice(0, 3);
+    const bottom3 = sorted.slice(-3).reverse();
+    detailCards = [
+      ...top3.map((t, i) => insightCard(`#${i + 1} Best`, formatR(rValue(t)), `${t.symbol} · ${t.date}`)),
+      ...bottom3.map((t, i) => insightCard(`#${i + 1} Worst`, formatR(rValue(t)), `${t.symbol} · ${t.date}`)),
+    ];
+  } else if (key === "processLeak") {
+    kicker.textContent = "Process Quality";
+    title.textContent = "Rule adherence over time";
+    let followed = 0;
+    seriesData = closed.map((t, i) => {
+      if (t.rule) followed++;
+      const rate = Math.round(followed / (i + 1) * 100);
+      return { value: rate, label: t.date, detail: `${t.symbol} · ${t.rule ? "Followed" : "Broken"}` };
+    });
+    const ruleFollowed = closed.filter((t) => t.rule).length;
+    const gradeA = closed.filter((t) => t.grade === "A").length;
+    detailCards = [
+      insightCard("Rules Followed", `${Math.round(ruleFollowed / closed.length * 100)}%`, `${ruleFollowed} of ${closed.length}`),
+      insightCard("A-Grade Trades", `${Math.round(gradeA / closed.length * 100)}%`, `${gradeA} of ${closed.length}`),
+      insightCard("Avg R (Rule ✓)", formatR(metrics(closed.filter((t) => t.rule)).expectancy), "When following rules"),
+      insightCard("Avg R (Rule ✗)", formatR(metrics(closed.filter((t) => !t.rule)).expectancy), "When breaking rules"),
+    ];
+  } else {
+    return;
+  }
+
+  panel.style.display = "block";
+  renderLineChart("insightDetailChart", seriesData, chartOptions);
+  cards.innerHTML = detailCards.join("");
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+document.getElementById("closeInsightDetail")?.addEventListener("click", () => {
+  document.getElementById("insightDetailPanel").style.display = "none";
 });
 
 async function initApp() {
